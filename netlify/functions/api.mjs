@@ -1,5 +1,6 @@
 // HK Seesaw Map: saves added seesaws and handles admin actions.
-// Set ADMIN_PASSWORD (and optionally REQUIRE_APPROVAL=true) under Site configuration → Environment variables.
+// Set ADMIN_PASSWORD under Site configuration → Environment variables. New posts go live at once; admin can
+// delete or merge them. (Posts saved as "pending" by an earlier version are treated as live.)
 import { getStore } from "@netlify/blobs";
 import { createHash, timingSafeEqual, randomUUID } from "node:crypto";
 
@@ -48,7 +49,8 @@ export default async (req, context) => {
 
 async function listRows(rows) {
   const { blobs } = await rows.list();
-  return (await Promise.all(blobs.map(b => rows.get(b.key, { type: "json" })))).filter(Boolean);
+  return (await Promise.all(blobs.map(b => rows.get(b.key, { type: "json" })))).filter(Boolean)
+    .map(r => r.status === "pending" ? { ...r, status: "live" } : r);
 }
 
 async function add(rows, photos, meta, b) {
@@ -72,7 +74,7 @@ async function add(rows, photos, meta, b) {
   if (spot && !b.photo && !message) throw new Error("Add a photo or a message.");
   if (!spot && !en && !addr) throw new Error("Add a place name or an address.");
   const type = "duo";
-  const status = process.env.REQUIRE_APPROVAL === "true" ? "pending" : "live";
+  const status = "live";
   const id = "f-" + randomUUID().slice(0, 8);
   const row = { id, en, zh: "", district: "", addr, lat, lon, type, items: "", note: "", spot, message, ig: ig(b.ig), credit: text(b.credit, 60),
     photo: b.photo ? await savePhoto(photos, b.photo) : "", status, kind: "fan", created: now(), updated: now() };
