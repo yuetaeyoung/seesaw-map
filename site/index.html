@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>在搖搖板上相對的我們 · 香港搖搖板地圖</title>
+<meta name="description" content="炎明熹〈在搖搖板上相對的我們〉— a map of the seesaws in Hong Kong's parks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Noto+Serif+TC:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+/* Layout: full-bleed custom-styled map; title card top-left, MV player bottom-left, park chips along the bottom.
+   One committed look: lavender land, violet roads, deep-purple sea, burning seesaw markers. */
+:root{
+  --mist:#eceaf4; --land:#e6e3f0; --park:#cfe8c9; --road:#9a7cf2; --road-hi:#7d55ee; --sea:#4f2f9e;
+  --ink:#24164d; --ink-soft:#5b4d86; --card:#ffffff; --line:#d9d3ee;
+  --fire:#ff4d1c; --ember:#ffb000; --glow:rgb(255 90 30 / .45);
+  --serif:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --sans:"Figtree","PingFang HK","Microsoft JhengHei",system-ui,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--mist);color:var(--ink);font:15px/1.5 var(--sans);overflow:hidden}
+#map{position:fixed;inset:0}
+.maplibregl-ctrl-attrib{font-size:11px}
+
+/* Title card */
+.title{position:fixed;z-index:5;top:calc(16px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));
+  max-width:min(440px,calc(100vw - 32px));padding:20px 22px 18px;border-radius:22px;background:rgb(255 255 255 / .9);
+  backdrop-filter:blur(10px);box-shadow:0 10px 40px rgb(36 22 77 / .18)}
+.eyebrow{font:700 12px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--fire)}
+.title h1{margin:10px 0 6px;font:900 clamp(26px,4.4vw,40px)/1.15 var(--serif);text-wrap:balance;letter-spacing:.02em}
+.title h1 .bracket{color:var(--road-hi)}
+.title p{margin:0;color:var(--ink-soft);font-size:14px}
+.title .count{margin-top:12px;display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+.title .count b{font:900 22px/1 var(--serif);color:var(--fire)}
+.title .count{flex-wrap:wrap}
+.title .count .sub{font-weight:400;color:var(--ink-soft);font-size:12.5px;width:100%}
+.credits{margin-top:10px;font-size:11.5px;color:var(--ink-soft);line-height:1.6}
+
+/* MV player */
+.player{position:fixed;z-index:5;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(88px + env(safe-area-inset-bottom,0px));
+  width:300px;max-width:calc(100vw - 32px);border-radius:18px;overflow:hidden;background:var(--ink);color:#fff;box-shadow:0 10px 40px rgb(36 22 77 / .3)}
+.player .screen{position:relative;aspect-ratio:16/9;max-width:100%;background:#000}
+.player .screen img,.player .screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover}
+.player .play{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(transparent,rgb(0 0 0 / .45));border:0;cursor:pointer;color:#fff}
+.player .play span{width:60px;height:60px;border-radius:50%;background:var(--fire);display:grid;place-items:center;box-shadow:0 0 0 8px rgb(255 77 28 / .25)}
+.player .unmute{position:absolute;right:10px;bottom:10px;z-index:2;border:0;border-radius:999px;padding:7px 12px;background:var(--fire);color:#fff;font:700 12.5px var(--sans);cursor:pointer;box-shadow:0 0 0 6px rgb(255 77 28 / .25)}
+.player .unmute[hidden]{display:none}
+.player .unmute.off{background:rgb(0 0 0 / .55);box-shadow:none}
+.player .offline-note{position:absolute;left:0;right:0;bottom:0;padding:6px 10px;font-size:11.5px;background:rgb(0 0 0 / .6);color:#fff;text-align:center}
+.player a.play{text-decoration:none}
+.player .meta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;font-size:13px}
+.player .meta a{color:var(--ember);font-weight:700;text-decoration:none;white-space:nowrap}
+.player .meta a:focus-visible,.play:focus-visible,.chip:focus-visible,.fire:focus-visible{outline:3px solid var(--ember);outline-offset:3px}
+
+/* Park chips */
+.chips{position:fixed;z-index:5;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;overflow-x:auto;
+  padding:4px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px));scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;border:0;background:var(--card);color:var(--ink);
+  font:600 14px var(--sans);cursor:pointer;box-shadow:0 4px 16px rgb(36 22 77 / .16)}
+.chip small{font-family:var(--serif);color:var(--ink-soft);font-size:13px}
+.chip[hidden]{display:none}
+.chip:hover,.chip.on{background:var(--ink);color:#fff}
+.chip:hover small,.chip.on small{color:#cfc3ff}
+
+/* Fire markers */
+.fire-wrap{width:42px;height:52px}
+.fire{display:block;width:42px;height:52px;border:0;padding:0;background:none;cursor:pointer;position:relative;transition:transform .15s;transform-origin:50% 100%}
+.fire svg{position:absolute;inset:0;overflow:visible;filter:drop-shadow(0 0 10px var(--glow))}
+.fire .outer{transform-origin:21px 48px;animation:flick 1.6s ease-in-out infinite}
+.fire .inner{transform-origin:21px 48px;animation:flick 1.1s ease-in-out infinite reverse}
+.fire::after{content:"";position:absolute;left:50%;bottom:-6px;width:26px;height:9px;margin-left:-13px;border-radius:50%;
+  background:radial-gradient(var(--glow),transparent 70%);animation:pulse 2s ease-in-out infinite}
+.fire:hover,.fire.on{transform:scale(1.25)}
+@keyframes flick{0%,100%{transform:scale(1,1) rotate(-2deg)}50%{transform:scale(.94,1.07) rotate(3deg)}}
+@keyframes pulse{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.5)}}
+
+/* Photo card */
+.card{position:fixed;z-index:8;width:300px;max-width:calc(100vw - 32px);border-radius:20px;overflow:hidden;background:var(--card);
+  box-shadow:0 18px 50px rgb(36 22 77 / .35);opacity:0;transform:translateY(8px) scale(.97);pointer-events:none;transition:opacity .18s,transform .18s}
+.card.show{opacity:1;transform:none;pointer-events:auto}
+.card .photo{position:relative;aspect-ratio:1/1;max-width:100%;background:var(--line)}
+.card .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .5s}
+.card .photo img.on{opacity:1}
+.card .dots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:6px}
+.card .dots i{width:7px;height:7px;border-radius:50%;background:rgb(255 255 255 / .55)}
+.card .dots i.on{background:#fff}
+.card .tag{position:absolute;top:12px;left:12px;padding:4px 10px;border-radius:999px;background:var(--fire);color:#fff;font:700 12px var(--sans)}
+.card .tag.web{left:auto;right:12px;background:#fff;color:var(--ink);border:1.5px dashed var(--ink-soft)}
+.card .tag.panel{background:var(--road-hi)}
+.card .links{display:flex;gap:16px}
+.fire-wrap.panel,.fire-wrap.panel .fire{width:26px;height:32px}
+.fire-wrap.panel .fire svg{filter:hue-rotate(-75deg) saturate(1.2) drop-shadow(0 0 8px rgb(125 85 238 / .55))}
+.fire-wrap.online .fire{opacity:.8}
+.fire-wrap.online .fire::before{content:"";position:absolute;left:50%;bottom:-9px;width:34px;height:14px;margin-left:-17px;border-radius:50%;border:2px dashed var(--ink)}
+.dot.panel{background:var(--road-hi)}
+.dot.online{background:#fff;border:1.5px dashed var(--ink)}
+.card .tag.single{background:var(--ember);color:var(--ink)}
+.card .tag.both{background:linear-gradient(90deg,var(--ember),var(--fire))}
+.card .nophoto{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;background:linear-gradient(160deg,#efe9ff,#ffe9dc);color:var(--ink-soft);font-size:13px;text-align:center;padding:24px}
+.card .nophoto svg{width:84px;height:104px}
+.card ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+.card li{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:#f1edff;color:var(--ink)}
+.fire svg{width:100%;height:100%}
+.fire-wrap.single,.fire-wrap.single .fire{width:30px;height:37px}
+.fire-wrap.single .fire svg{filter:hue-rotate(28deg) saturate(1.15) drop-shadow(0 0 8px rgb(255 180 0 / .5))}
+.filters{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap}
+.filters button{border:1px solid var(--line);background:#fff;color:var(--ink);font:700 13px var(--sans);padding:6px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.filters button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.filters button:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--fire)}
+.dot.single{background:var(--ember)}
+.dot.both{background:linear-gradient(90deg,var(--ember) 50%,var(--fire) 50%)}
+.card .info{padding:14px 16px 16px;display:flex;flex-direction:column;gap:3px}
+.card h2{margin:0;font:700 18px/1.25 var(--sans)}
+.card .zh{font:700 15px var(--serif);color:var(--ink-soft)}
+.card .addr{margin-top:6px;font-size:13.5px;color:var(--ink);display:flex;gap:6px}
+.card .addr svg{flex:none;margin-top:3px}
+.card .note{font-size:12px;color:var(--ink-soft)}
+.card a{margin-top:8px;align-self:flex-start;color:var(--road-hi);font-weight:700;font-size:13px;text-decoration:none}
+
+.addbtn{margin-top:12px;width:100%;border:0;border-radius:14px;padding:11px 14px;background:var(--fire);color:#fff;font:700 15px var(--sans);cursor:pointer;box-shadow:0 6px 18px rgb(255 77 28 / .3)}
+.addbtn:hover{filter:brightness(1.06)}
+.addbtn[hidden],.adminlink[hidden],.adminbar[hidden],.filters button[hidden]{display:none}
+.adminlink{position:fixed;z-index:6;right:max(6px,env(safe-area-inset-right,0px));bottom:calc(2px + env(safe-area-inset-bottom,0px));border:0;background:none;color:#fff;opacity:.45;font:500 9px/1 var(--sans);letter-spacing:.04em;cursor:pointer;padding:2px 3px}
+.adminlink:hover{opacity:.9}
+.adminbar{margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:700;color:#fff;background:var(--ink);padding:8px 12px;border-radius:12px}
+.adminbar button{margin-left:auto;border:0;background:#fff;color:var(--ink);border-radius:999px;padding:3px 10px;font:700 12px var(--sans);cursor:pointer}
+.editor{position:fixed;z-index:12;top:calc(16px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));width:360px;max-width:calc(100vw - 32px);
+  max-height:calc(100% - 32px);overflow:auto;background:#fff;border-radius:22px;padding:20px 20px 18px;box-shadow:0 18px 50px rgb(36 22 77 / .35)}
+.editor h3{margin:0 0 6px;font:900 22px/1.2 var(--serif)}
+.editor .hint{margin:0 0 12px;font-size:13px;color:var(--ink-soft)}
+.editor form{display:flex;flex-direction:column;gap:12px}
+.editor label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:700}
+.editor input:not([type=radio]),.editor textarea{font:15px var(--sans);color:var(--ink);padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;background:#faf9fd;width:100%}
+.editor input:not([type=radio]):focus,.editor textarea:focus{outline:none;border-color:var(--road-hi)}
+.editor textarea{resize:vertical}
+.editor .search{display:flex;gap:6px}
+.editor .search input{flex:1;min-width:0}
+.editor fieldset{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px}
+.editor legend{font-size:13px;font-weight:700;margin-bottom:5px;padding:0}
+.editor .opt{flex-direction:row;align-items:center;gap:6px;font-weight:600;padding:6px 10px;border:1.5px solid var(--line);border-radius:999px;cursor:pointer}
+.editor .opt:has(input:checked){border-color:var(--ink);background:#f1edff}
+.results{display:flex;flex-direction:column;gap:4px}
+.results button{text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 10px;font:13px/1.35 var(--sans);color:var(--ink);cursor:pointer}
+.results button:hover{border-color:var(--road-hi);background:#f6f3ff}
+.results p{margin:0;font-size:13px;color:var(--ink-soft)}
+.pinstate{font-size:12.5px;color:var(--ink-soft);background:#f6f3ff;border-radius:10px;padding:8px 10px}
+.pinstate.ok{color:var(--ink);background:#e9f7e6}
+.btn{border:0;border-radius:12px;padding:10px 16px;font:700 14px var(--sans);cursor:pointer}
+.btn.primary{background:var(--ink);color:#fff}
+.btn.ghost{background:#f1edff;color:var(--ink)}
+.btn.danger{background:#d93025;color:#fff}
+.btn.approve{background:#1f8a4c;color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,.addbtn:focus-visible,.adminlink:focus-visible,.results button:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.msg{margin:0;font-size:13px;min-height:1em}
+.msg.err{color:#c62828}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.toast{position:fixed;z-index:30;left:50%;top:calc(20px + env(safe-area-inset-top,0px));transform:translate(-50%,-20px);opacity:0;background:var(--ink);color:#fff;
+  padding:10px 18px;border-radius:999px;font-weight:700;font-size:14px;transition:.25s;pointer-events:none;max-width:calc(100vw - 32px);text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.card .admin-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;font-weight:700}
+.card .admin-row .btn{padding:7px 12px;font-size:12.5px}
+.card .tag.fan{background:#ffe3ef;color:#a3134f;border:1.5px solid #f48fb1}
+.card .tag.pending{top:auto;bottom:12px;background:#fff3cd;color:#6b4e00}
+.fire-wrap.fan .fire::before{content:"";position:absolute;left:50%;bottom:-8px;width:32px;height:13px;margin-left:-16px;border-radius:50%;border:2.5px solid #f06292}
+.fire-wrap.pending .fire{opacity:.5}
+.fire-wrap.draft .fire{cursor:grab}
+.fire-wrap.draft .fire::before{content:"";position:absolute;left:50%;bottom:-10px;width:40px;height:16px;margin-left:-20px;border-radius:50%;border:3px solid var(--ink);animation:pulse 1.2s ease-in-out infinite}
+.dot.fan{background:#f06292}
+@media (max-width:640px){.editor{top:auto;bottom:0;right:0;left:0;width:auto;max-width:none;max-height:78%;border-radius:22px 22px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}}
+
+.timing-now{display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:14px;background:#f6f3ff;margin-bottom:12px}
+.timing-now small{color:var(--ink-soft);font-weight:700;font-size:12.5px}
+.timing-now b{font:900 20px/1.35 var(--serif);min-height:1.35em}
+.btn.tm-mark{background:var(--fire);color:#fff}
+.editor .btnrow + .btnrow,.editor label + .btnrow{margin-top:12px}
+.editor #tm-outwrap{margin-top:12px}
+
+.card .cap{position:absolute;left:10px;right:10px;bottom:24px;font-size:11.5px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgb(0 0 0 / .7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .cap a{color:#fff;margin:0;font-size:11.5px;text-decoration:underline}
+.card .cap:empty{display:none}
+.card .posts{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:150px;overflow:auto}
+.card .post p{margin:0;font:600 13.5px/1.45 var(--serif);color:var(--ink)}
+.card .post span{font:600 12px var(--sans);color:var(--ink-soft)}
+.card .post span a{margin:0;font-size:12px}
+.card .post em{font-style:normal;color:#8a6200;background:#fff3cd;border-radius:6px;padding:0 5px}
+.card .pact{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.card .pact .btn{padding:4px 9px;font-size:11.5px}
+.card .addhere{margin-top:10px;width:100%;background:var(--fire);color:#fff;padding:9px 12px;font-size:13.5px}
+.card .near{margin-top:10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.card .near div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card .near .btn{padding:5px 10px;font-size:12px;flex:none}
+.editor .here{align-self:flex-start;padding:8px 12px;font-size:13px}
+.editor .at{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;background:#faf9fd;padding-left:11px}
+.editor .at span{font-weight:700;color:var(--ink-soft)}
+.editor .at input{border:0!important;background:none!important;padding-left:4px!important}
+.editor .joinopt{flex-direction:row;align-items:flex-start;gap:8px;border-radius:12px;border-color:var(--fire);background:#fff3ee;font-size:13px;line-height:1.4}
+.editor .joinopt input{margin-top:3px}
+.editor [hidden]{display:none!important}
+
+.storyprev{position:relative;width:170px;aspect-ratio:9/16;max-width:100%;margin:0 auto 14px;border-radius:14px;overflow:hidden;background:#2a1766;box-shadow:0 8px 24px rgb(36 22 77 / .3)}
+.storyprev img{width:100%;height:100%;display:block;object-fit:cover}
+.storyprev img:not([src]){display:none}
+.storyprev span{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:12px;text-align:center;padding:10px}
+.btn.igbtn{width:100%;color:#fff;background:linear-gradient(90deg,#f58529,#dd2a7b 55%,#8134af);font-size:15px;padding:12px 16px}
+.igsteps{margin:12px 0;padding-left:20px;font-size:13px;line-height:1.65;color:var(--ink)}
+.linkish{border:0;background:none;color:var(--road-hi);font:700 12.5px var(--sans);text-decoration:underline;cursor:pointer;padding:0 2px}
+
+/* Lyric cursor */
+.lyric{position:fixed;z-index:20;left:0;top:0;pointer-events:none;white-space:nowrap;font:700 17px/1 var(--serif);color:var(--ink);
+  padding:7px 12px;border-radius:999px;background:rgb(255 255 255 / .82);box-shadow:0 4px 14px rgb(36 22 77 / .15);
+  transform-origin:0 50%;transition:opacity .2s}
+.lyric.fade{opacity:0}
+@media (hover:none){.lyric{display:none}}
+@media (max-width:640px){
+  .title{padding:16px 18px 14px}
+  .credits{display:none}
+  .player{width:220px;bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){.fire .outer,.fire .inner,.fire::after{animation:none}.card,.lyric{transition:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="fo" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff3d1c"/><stop offset=".6" stop-color="#ff7a1a"/><stop offset="1" stop-color="#ffb000"/></linearGradient>
+    <linearGradient id="fi" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffd23f"/><stop offset="1" stop-color="#fff6c2"/></linearGradient>
+  </defs>
+</svg>
+<div id="map" role="region" aria-label="香港搖搖板地圖"></div>
+
+<header class="title">
+  <div class="eyebrow">炎明熹 Gigi Yim · 新歌</div>
+  <h1><span class="bracket">〈</span>在搖搖板上相對的我們<span class="bracket">〉</span></h1>
+  <p>香港搖搖板地圖 · Find a seesaw in Hong Kong and sit across from someone.</p>
+  <div class="count"><b id="nall">17</b> 個雙人搖搖板 two-person seesaws<span class="sub" id="countsub">LCSD parks · online finds</span></div>
+  <div class="filters" role="group" aria-label="Show">
+    <button type="button" data-f="all" aria-pressed="true">全部 All</button>
+    <button type="button" data-f="lcsd" aria-pressed="false"><i class="dot"></i>康文署 LCSD</button>
+    <button type="button" data-f="online" aria-pressed="false"><i class="dot online"></i>網上搜尋 Online</button>
+    <button type="button" data-f="fan" aria-pressed="false" hidden id="fanfilter"><i class="dot fan"></i>網友 Fans</button>
+  </div>
+  <button type="button" class="addbtn" id="addbtn" hidden>＋ 新增搖搖板 Add a seesaw</button>
+  <div class="adminbar" id="adminbar" hidden>管理模式 Admin<span id="pendingnote"></span><button type="button" id="logout">登出 Log out</button></div>
+  <div class="credits">作曲：陳考威 / AP 潘宇謙　填詞：亞木　編曲：黃兆銘　監製：陳考威</div>
+</header>
+
+<section class="player" aria-label="Music video">
+  <div class="screen" id="screen">
+    <img id="thumb" alt="〈在搖搖板上相對的我們〉 music video">
+    <button class="play" id="play" type="button" aria-label="Play the music video">
+      <span><svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path d="M3 2l17 10L3 22z" fill="#fff"/></svg></span>
+    </button>
+  </div>
+  <div class="meta"><span>〈在搖搖板上相對的我們〉MV</span><a id="yt" target="_blank" rel="noopener">YouTube ↗</a></div>
+</section>
+
+<nav class="chips" id="chips" aria-label="Parks with a seesaw"></nav>
+<div class="card" id="card" role="dialog" aria-live="polite"></div>
+<aside class="editor" id="panel" hidden></aside>
+<div class="toast" id="toast" role="status"></div>
+<button type="button" class="adminlink" id="adminlink" hidden>admin</button>
+<div class="lyric fade" id="lyric" aria-hidden="true"></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// ── Settings ────────────────────────────────────────────────────────────────
+// YouTube video ID of the MV. News coverage embeds both VXj8Ddcr7FM and BieU27o2JJY; use the official one.
+const YOUTUBE_ID = "VXj8Ddcr7FM";
+// Lines shown beside the cursor, one at a time. Either fill this list, or leave it empty and put a file
+// called lyrics.txt (one line per row) in the same folder as this page; the page reads it when online.
+const LYRICS = [];
+// Where added seesaws are saved: the site's own Netlify function. Change only if you host the function elsewhere.
+const SHEET_API_URL = "/api";
+
+// ── Two-person seesaws: LCSD's Play Equipment for All Children parks with seesaws, sway boats, saddle mates or
+//    multi-seat rockers (all 48 parks checked, Oct 2026), plus places found by online search (online: true).
+const LCSD = "https://www.lcsd.gov.hk/file_upload_clpss/leisure_facilities/en/common/images/photo/facilities/";
+const PARKS = [
+  {"en": "Wan Chai Park", "zh": "灣仔公園", "district": "Wan Chai 灣仔", "addr": "Bullock Lane, Wan Chai, Hong Kong", "lat": 22.27556, "lon": 114.17611, "type": "duo", "items": ["Seesaw 搖搖板", "2 saddle mates (two-seat rockers)"], "photos": ["WC/1089_5511_2.jpg", "WC/1089_5511_1.jpg", "WC/1089_5511_3.jpg", "WC/1089_5511_4.jpg"]},
+  {"en": "Wong Nai Chung Road Crescent Garden", "zh": "黃泥涌道新月花園", "district": "Wan Chai 灣仔", "addr": "Wong Nai Chung Road, Happy Valley, Hong Kong", "lat": 22.27028, "lon": 114.18417, "type": "duo", "items": ["Sway boat 搖搖船"], "photos": ["WC/1289_1.jpg", "WC/1289_2.jpg", "WC/1289_3.jpg", "WC/1289_4.jpg"]},
+  {"en": "Quarry Bay Park", "zh": "鰂魚涌公園", "district": "Eastern 東區", "addr": "Taikoo Shing, Quarry Bay, Hong Kong", "lat": 22.28833, "lon": 114.21556, "type": "duo", "items": ["Sway boat 搖搖船", "Spring seesaw and rocking horses"], "photos": ["ED/1106_1.jpg", "ED/1106_2.jpg", "ED/1106_3.jpg"]},
+  {"en": "Repulse Bay Beach Children's Playground", "zh": "淺水灣海灘兒童遊樂場", "district": "Southern 南區", "addr": "16 Beach Road, Repulse Bay, Hong Kong", "lat": 22.23639, "lon": 114.1975, "type": "duo", "items": ["Seesaw 蹺蹺板", "Merry-go-round"], "photos": ["SD/1124_1.jpg", "SD/1124_2.jpg", "SD/1124_3.jpg", "SD/1124_4.jpg"]},
+  {"en": "Ap Lei Chau Park", "zh": "鴨脷洲公園", "district": "Southern 南區", "addr": "Ap Lei Chau Main Street, Aberdeen, Hong Kong", "lat": 22.245, "lon": 114.15778, "type": "duo", "items": ["2 saddle mates (two-seat rockers)"], "photos": ["SD/1094_1.jpg", "SD/1094_2.jpg", "SD/1094_3.jpg", "SD/1094_4.jpg"]},
+  {"en": "Mount Austin Playground", "zh": "柯士甸山遊樂場", "district": "Central & Western 中西區", "addr": "Mount Austin Road, the Peak, Hong Kong", "lat": 22.2725, "lon": 114.1475, "type": "duo", "items": ["Multi-seat swing with one cradle seat"], "photos": ["CW/1102_1.jpg", "CW/1102_2.jpg", "CW/1102_3.jpg", "CW/1102_4.jpg"]},
+  {"en": "Hoi Fan Road Park", "zh": "海帆道公園", "district": "Yau Tsim Mong 油尖旺", "addr": "18 Hoi Fan Road, Tai Kok Tsui, Kowloon", "lat": 22.3222, "lon": 114.1555, "type": "duo", "items": ["Seesaw 搖搖板", "Carousel"], "photos": ["YTM/3241_05.jpg", "YTM/3241_06.jpg"], "note": "New park, opened September 2026"},
+  {"en": "Sha Tin Park", "zh": "沙田公園", "district": "Sha Tin 沙田", "addr": "2 Yuen Wo Road, Sha Tin, New Territories", "lat": 22.37944, "lon": 114.19, "type": "duo", "items": ["4-seat Buck-A-Bout rocker", "Rockers 搖搖板"], "photos": ["ST/1087_1.jpg", "ST/1087_2.jpg"]},
+  {"en": "Tiu Keng Leng Sports Centre (Open Space)", "zh": "調景嶺體育館（戶外休憩用地）", "district": "Sai Kung 西貢", "addr": "2 Chui Ling Road, Tseung Kwan O, New Territories", "lat": 22.30611, "lon": 114.25472, "type": "duo", "items": ["3-seater rocker", "Sailing rocker"], "photos": [], "note": "LCSD has no photo of this one yet"},
+  {"en": "Tsing Yi Northeast Park", "zh": "青衣東北公園", "district": "Kwai Tsing 葵青", "addr": "10 Tam Kon Shan Road, Tsing Yi, New Territories", "lat": 22.3625, "lon": 114.09889, "type": "duo", "items": ["Seesaw 搖搖板"], "photos": ["KWT/1118_1.jpg", "KWT/1118_2.jpg"]},
+  {"en": "Shing Mun Valley Park (South Garden)", "zh": "城門谷公園（南園）", "district": "Tsuen Wan 荃灣", "addr": "21 Shing Mun Road, Tsuen Wan, New Territories", "lat": 22.37472, "lon": 114.125, "type": "duo", "items": ["Seesaw in Adventure Land"], "photos": ["TW/1111_1.jpg", "TW/1111_2.jpg"]},
+  {"en": "Yuen Long Park", "zh": "元朗公園", "district": "Yuen Long 元朗", "addr": "Town Park Road North, Yuen Long, New Territories", "lat": 22.4425, "lon": 114.01889, "type": "duo", "items": ["Seesaw 搖搖板", "Spring rocker, swings"], "photos": ["YL/1092_1.jpg", "YL/1092_2.jpg", "YL/1092_3.jpg", "YL/1092_4.jpg"]},
+  {"en": "Tin Shui Wai Park", "zh": "天水圍公園", "district": "Yuen Long 元朗", "addr": "6 Tin Shui Road, Tin Shui Wai, New Territories", "lat": 22.45556, "lon": 114.00333, "type": "duo", "items": ["Saddle mates (two-seat rocker)"], "photos": ["YL/tswp_new_01.jpg", "YL/tswp_new_02.jpg", "YL/tswp_new_03.jpg", "YL/tswp_new_04.jpg"], "note": "Playground renovated; the old seesaw is gone"},
+  {"en": "Po Wing Road Playground", "zh": "保榮路遊樂場", "district": "North 北區", "addr": "Po Wing Road, Sheung Shui, New Territories", "lat": 22.49639, "lon": 114.12944, "type": "duo", "items": ["Seesaw 蹺蹺板"], "photos": ["ND/1107_1.jpg", "ND/1107_2.jpg", "ND/1107_3.jpg"]},
+  {"en": "Che Kung Miu Road Playground", "zh": "車公廟路遊樂場", "district": "Sha Tin 沙田", "addr": "Che Kung Miu Road, Tai Wai, New Territories", "lat": 22.3742, "lon": 114.1788, "type": "duo", "online": true, "items": ["Stand-up seesaw 搖搖板"], "photos": [], "source": "https://www.hk01.com/article/60295774", "note": "Found by online search (HK01, 2025). Not on LCSD's list, so check before you go. Map position approximate."},
+  {"en": "Kai Tak Sports Park: Five Elements Kids' Playground", "zh": "啟德體育園 五行童樂園", "district": "Kowloon City 九龍城", "addr": "Kai Tak Sports Park, Kai Tak, Kowloon", "lat": 22.3225, "lon": 114.1985, "type": "duo", "online": true, "items": ["Seesaw 搖搖板"], "photos": [], "source": "https://www.stheadline.com/parenting/3498888/", "note": "Found by online search (Sing Tao, 2025). Not on LCSD's list, so check before you go. Map position approximate."},
+  {"en": "Belcher Bay Promenade", "zh": "卑路乍灣海濱長廊", "district": "Central & Western 中西區", "addr": "Belcher Bay Promenade, Shek Tong Tsui, Hong Kong", "lat": 22.286, "lon": 114.1295, "type": "duo", "online": true, "items": ["Seesaw art installation"], "photos": [], "source": "https://devb.gov.hk/filemanager/en/content_1044/20220807_08.html", "note": "Found by online search (Development Bureau, 2022). Not on LCSD's list, so check before you go. It was a movable installation and may have been moved."}
+];
+
+// ── Map style: our own colours over free OpenStreetMap vector tiles (OpenFreeMap) ──
+const NAME = ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const roadWidth = (lo, hi) => ["interpolate", ["exponential", 1.6], ["zoom"], 10, lo, 16, hi];
+const STYLE = {
+  version: 8,
+  glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  sources: { omt: { type: "vector", url: "https://tiles.openfreemap.org/planet" } },
+  layers: [
+    { id: "bg", type: "background", paint: { "background-color": css("--land") } },
+    { id: "green", type: "fill", source: "omt", "source-layer": "landcover", filter: ["in", ["get", "class"], ["literal", ["grass", "wood", "farmland"]]], paint: { "fill-color": css("--park"), "fill-opacity": .7 } },
+    { id: "parks", type: "fill", source: "omt", "source-layer": "park", paint: { "fill-color": css("--park") } },
+    { id: "landuse", type: "fill", source: "omt", "source-layer": "landuse", filter: ["in", ["get", "class"], ["literal", ["park", "playground", "pitch", "cemetery"]]], paint: { "fill-color": css("--park") } },
+    { id: "water", type: "fill", source: "omt", "source-layer": "water", paint: { "fill-color": css("--sea") } },
+    { id: "waterway", type: "line", source: "omt", "source-layer": "waterway", paint: { "line-color": css("--sea"), "line-width": 1.2 } },
+    { id: "buildings", type: "fill", source: "omt", "source-layer": "building", minzoom: 14, paint: { "fill-color": "#dcd7ec", "fill-opacity": .9 } },
+    { id: "rail", type: "line", source: "omt", "source-layer": "transportation", filter: ["==", ["get", "class"], "rail"], paint: { "line-color": "#b9b0d6", "line-width": 1.2, "line-dasharray": [3, 2] } },
+    { id: "road-minor", type: "line", source: "omt", "source-layer": "transportation", minzoom: 12,
+      filter: ["in", ["get", "class"], ["literal", ["minor", "service", "track", "path"]]],
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": css("--road"), "line-opacity": .55, "line-width": roadWidth(.4, 4) } },
+    { id: "road-mid", type: "line", source: "omt", "source-layer": "transportation",
+      filter: ["in", ["get", "class"], ["literal", ["secondary", "tertiary"]]],
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": css("--road"), "line-width": roadWidth(.8, 8) } },
+    { id: "road-major", type: "line", source: "omt", "source-layer": "transportation",
+      filter: ["in", ["get", "class"], ["literal", ["motorway", "trunk", "primary"]]],
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": css("--road-hi"), "line-width": roadWidth(1.4, 12) } },
+    { id: "water-name", type: "symbol", source: "omt", "source-layer": "water_name",
+      layout: { "text-field": NAME, "text-font": ["Noto Sans Italic"], "text-size": 13, "text-letter-spacing": .1 },
+      paint: { "text-color": "#cbbcff" } },
+    { id: "road-name", type: "symbol", source: "omt", "source-layer": "transportation_name", minzoom: 14,
+      layout: { "symbol-placement": "line", "text-field": NAME, "text-font": ["Noto Sans Regular"], "text-size": 11 },
+      paint: { "text-color": css("--ink-soft"), "text-halo-color": css("--land"), "text-halo-width": 1.5 } },
+    { id: "place", type: "symbol", source: "omt", "source-layer": "place",
+      filter: ["in", ["get", "class"], ["literal", ["city", "town", "suburb", "neighbourhood", "quarter", "village"]]],
+      layout: { "text-field": NAME, "text-font": ["Noto Sans Bold"], "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 15, 15],
+        "text-transform": "uppercase", "text-letter-spacing": .12, "text-max-width": 8 },
+      paint: { "text-color": css("--ink"), "text-halo-color": css("--land"), "text-halo-width": 2 } }
+  ]
+};
+// Backup look if the vector tiles can't be reached: a plain basemap tinted toward the same purples.
+const FALLBACK_STYLE = {
+  version: 8,
+  sources: { carto: { type: "raster", tileSize: 256, attribution: "© OpenStreetMap contributors © CARTO",
+    tiles: ["a", "b", "c", "d"].map(s => `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png`) } },
+  layers: [{ id: "carto", type: "raster", source: "carto", paint: { "raster-hue-rotate": 210, "raster-saturation": .2, "raster-contrast": .05 } }]
+};
+
+const ATTRIBUTION = { compact: true, customAttribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Photos © LCSD' };
+const map = new maplibregl.Map({
+  container: "map", style: STYLE, center: [114.13, 22.36], zoom: 10.4, minZoom: 9, maxZoom: 18,
+  attributionControl: false,
+  localIdeographFontFamily: "'Noto Serif TC', 'PingFang HK', 'Microsoft JhengHei', sans-serif"
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+map.addControl(new maplibregl.AttributionControl(ATTRIBUTION), "top-right");
+let tilesOk = false;
+map.on("sourcedata", e => { if (e.sourceId === "omt" && e.isSourceLoaded) tilesOk = true; });
+setTimeout(() => { if (!tilesOk) map.setStyle(FALLBACK_STYLE); }, 9000);
+map.once("load", () => {
+  const b = new maplibregl.LngLatBounds();
+  PARKS.forEach(p => b.extend([p.lon, p.lat]));
+  map.fitBounds(b, { padding: { top: 220, bottom: 140, left: 80, right: 80 }, maxZoom: 12, duration: 0 });
+});
+
+// ── Fire markers and the photo card ──
+const FLAME = `<svg viewBox="0 0 42 52" width="42" height="52" aria-hidden="true">
+  <path class="outer" fill="url(#fo)" d="M21 49c-9.5 0-16-6.4-16-15.2 0-6.6 3.8-11 7.4-15.4 2.6-3.2 4.7-7.4 4-14.4 6.2 3 10.8 9.4 10.8 16.6 1.8-1.4 2.8-3.6 3-6 4.4 4.2 6.8 10 6.8 15.6C37 43 30.6 49 21 49z"/>
+  <path class="inner" fill="url(#fi)" d="M21 47c-4.6 0-8-3.2-8-7.6 0-4 2.6-6.6 4.6-9 1.4-1.8 2.2-4 2-6.8 4.6 2.6 9.4 7.6 9.4 14 0 5.2-3.4 9.4-8 9.4z"/>
+</svg>`;
+const card = document.getElementById("card"), chips = document.getElementById("chips");
+const panel = document.getElementById("panel"), toastEl = document.getElementById("toast");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const abs = f => /^https?:/i.test(f) ? f : LCSD + f;
+const inHK = (lat, lon) => lat > 22.1 && lat < 22.6 && lon > 113.8 && lon < 114.5;
+const ID_PHOTO = /^p-[0-9a-f-]{36}$/;
+const photoSrc = id => `${API_URL.replace(/\/$/, "")}/photo/${encodeURIComponent(id)}`;
+const igHandle = s => String(s || "").trim().replace(/^@+/, "").replace(/[^A-Za-z0-9._]/g, "").slice(0, 30);
+const igLink = h => `https://www.instagram.com/${encodeURIComponent(h)}/`;
+const distM = (a, b) => { const r = Math.PI / 180, x = (b.lon - a.lon) * r * Math.cos((a.lat + b.lat) / 2 * r), y = (b.lat - a.lat) * r; return Math.hypot(x, y) * 6371e3; };
+const nameOf = p => p.en || p.zh || p.addr || "This seesaw";
+PARKS.forEach(p => { p.id = "b-" + p.en.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); });
+
+let API_URL = SHEET_API_URL, apiOn = false, sheetRows = [], entries = [], filter = "all";
+let admin = false, adminPw = "", placing = false, draft = null, onPin = null;
+let current = null, hideTimer = 0, cycleTimer = 0, pinned = false;
+
+// Every saved row is a "post". A post with a `spot` belongs to that seesaw (its photo and message show there);
+// a post without one is a new seesaw. Rows with a built-in park's id edit or hide that park.
+function fromRow(base, r) {
+  const q = { ...base, status: r.status || "live", spot: String(r.spot || "") };
+  for (const k of ["en", "zh", "district", "addr", "note"]) if (r[k] !== "" && r[k] != null) q[k] = String(r[k]);
+  if (r.lat !== "" && r.lon !== "" && inHK(+r.lat, +r.lon)) { q.lat = +r.lat; q.lon = +r.lon; }
+  if (r.items && base.builtin) q.items = String(r.items).split(/\n|\|/).map(s => s.trim()).filter(Boolean);
+  return q;
+}
+function merge() {
+  const rows = new Map(sheetRows.map(r => [String(r.id), r]));
+  const nodes = new Map();
+  for (const b of PARKS) {
+    let e = { ...b, builtin: true, status: "live", spot: "", items: b.items.slice(), posts: [],
+      photos: b.photos.map(f => ({ src: abs(f), credit: "LCSD 康文署" })) };
+    const r = rows.get(b.id);
+    rows.delete(b.id);
+    if (r) {
+      if (r.status === "deleted") continue;
+      e = fromRow(e, r);
+      if (ID_PHOTO.test(r.photo || "")) e.photos.unshift({ src: photoSrc(r.photo), credit: "" });
+    }
+    nodes.set(e.id, e);
+  }
+  for (const r of rows.values()) {
+    if (r.status === "deleted" || (r.status === "pending" && !admin)) continue;
+    const e = fromRow({ id: String(r.id), en: "", zh: "", district: "", addr: "", items: [], photos: [], posts: [], fan: true }, r);
+    const post = { id: e.id, ig: igHandle(r.ig), credit: String(r.credit || ""), message: String(r.message || ""), status: e.status, photo: ID_PHOTO.test(r.photo || "") };
+    if (post.photo) e.photos.push({ src: photoSrc(r.photo), credit: post.credit, ig: post.ig });
+    e.posts.push(post);
+    if (e.lat != null) nodes.set(e.id, e);
+  }
+  // Follow "merged into" links to the seesaw that shows on the map; a loop of merges settles on one of them.
+  const rootOf = e => {
+    const path = [e];
+    let x = e;
+    while (x.spot && nodes.has(x.spot)) {
+      const next = nodes.get(x.spot), at = path.indexOf(next);
+      if (at >= 0) return path.slice(at).sort((a, b) => a.id < b.id ? -1 : 1)[0];
+      path.push(next); x = next;
+    }
+    return x;
+  };
+  const out = [];
+  for (const e of nodes.values()) if (rootOf(e) === e) out.push(e);
+  for (const e of nodes.values()) {
+    const r = rootOf(e);
+    if (r !== e) { r.photos.push(...e.photos); r.posts.push(...e.posts); if (e.fan) r.fanPosts = true; }
+  }
+  return out.filter(e => e.en || e.zh || e.addr);
+}
+const hasFans = p => p.fan || p.fanPosts;
+const visible = p => {
+  if (filter === "all") return true;
+  if (filter === "online") return !!p.online;
+  if (filter === "fan") return hasFans(p);
+  if (filter === "lcsd") return p.builtin && !p.online;
+  return true;
+};
+function applyFilter() {
+  entries.forEach(p => { const s = visible(p); p.wrap.style.display = s ? "" : "none"; p.chip.hidden = !s; });
+}
+function recount() {
+  const live = entries.filter(p => p.status !== "pending");
+  document.getElementById("nall").textContent = live.length;
+  const nL = live.filter(p => p.builtin && !p.online).length, nO = live.filter(p => p.online).length, nF = live.filter(p => p.fan).length;
+  const nPhotos = live.reduce((a, p) => a + p.posts.filter(x => x.photo && x.status !== "pending").length, 0);
+  document.getElementById("countsub").textContent = `${nL} LCSD parks · ${nO} online finds${nF ? ` · ${nF} added by fans` : ""}${nPhotos ? ` · ${nPhotos} fan photos 網友相片` : ""}`;
+  const nPending = entries.reduce((a, p) => a + p.posts.filter(x => x.status === "pending").length, 0);
+  document.getElementById("pendingnote").textContent = nPending ? ` · ${nPending} 待審批 waiting for approval` : "";
+}
+
+function draw() {
+  entries.forEach(p => p.marker?.remove());
+  closeCard();
+  entries = merge();
+  chips.innerHTML = "";
+  for (const p of entries) {
+    const wrap = document.createElement("div");
+    wrap.className = ["fire-wrap duo", p.online && "online", hasFans(p) && "fan", p.status === "pending" && "pending"].filter(Boolean).join(" ");
+    const el = document.createElement("button");
+    el.className = "fire"; el.type = "button"; el.innerHTML = FLAME;
+    el.setAttribute("aria-label", `${nameOf(p)} ${p.zh}: 雙人搖搖板 two-person seesaw`);
+    wrap.appendChild(el);
+    el.addEventListener("mouseenter", () => showCard(p));
+    el.addEventListener("mouseleave", hideSoon);
+    el.addEventListener("focus", () => showCard(p));
+    el.addEventListener("blur", hideSoon);
+    el.addEventListener("click", e => { e.stopPropagation(); pinned = true; showCard(p); });
+    p.marker = new maplibregl.Marker({ element: wrap, anchor: "bottom" }).setLngLat([p.lon, p.lat]).addTo(map);
+    p.el = el; p.wrap = wrap;
+
+    const c = document.createElement("button");
+    c.className = "chip"; c.type = "button";
+    c.innerHTML = `<i class="dot ${hasFans(p) ? "fan" : p.online ? "online" : "duo"}"></i>${esc(nameOf(p).replace(/ \(.*\)/, ""))} <small>${esc(p.zh.replace(/（.*）/, ""))}</small>`;
+    c.addEventListener("click", () => {
+      pinned = true;
+      map.flyTo({ center: [p.lon, p.lat], zoom: 15.5, duration: 1400 });
+      map.once("moveend", () => showCard(p));
+    });
+    chips.appendChild(c);
+    p.chip = c;
+  }
+  applyFilter(); recount();
+}
+
+const caption = ph => !ph || (!ph.credit && !ph.ig) ? "" :
+  `相片 Photo: ${esc(ph.credit)}${ph.ig ? `${ph.credit ? " · " : ""}<a href="${igLink(ph.ig)}" target="_blank" rel="noopener">@${esc(ph.ig)}</a>` : ""}`;
+function showCard(p) {
+  if (placing) return;
+  clearTimeout(hideTimer);
+  if (current !== p) {
+    current = p;
+    const ph = p.photos;
+    const noPhoto = p.online ? "No photo we can show yet. See the source below." : p.fan ? "No photo yet. Add one!" : "LCSD hasn't published a photo of this playground yet.";
+    const posts = p.posts.filter(x => x.message || admin);
+    const near = admin ? entries.filter(o => o !== p && distM(o, p) < 150).sort((a, b) => distM(a, p) - distM(b, p)) : [];
+    const postActs = x => !admin || x.id === p.id ? "" : `<span class="pact">${x.status === "pending" ? `<button type="button" class="btn approve" data-act="approve" data-id="${x.id}">批准 Approve</button>` : ""}<button type="button" class="btn ghost" data-act="split" data-id="${x.id}">分開 Split off</button><button type="button" class="btn danger" data-act="delete" data-id="${x.id}">刪除 Delete</button></span>`;
+    card.innerHTML = `<div class="photo">${ph.length ? ph.map((f, i) => `<img src="${esc(f.src)}" alt="${esc(nameOf(p))} photo ${i + 1}" class="${i ? "" : "on"}">`).join("") : `<div class="nophoto">${FLAME}<span>${noPhoto}</span></div>`}
+        <span class="tag duo">雙人 Two-person</span>${p.online ? `<span class="tag web">網上搜尋 Online search</span>` : ""}${hasFans(p) ? `<span class="tag web fan">網友 Fans</span>` : ""}
+        ${p.status === "pending" ? `<span class="tag pending">待審批 Waiting for approval</span>` : ""}
+        <div class="cap">${caption(ph[0])}</div>
+        ${ph.length > 1 ? `<div class="dots">${ph.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}</div>
+      <div class="info"><h2>${esc(nameOf(p))}</h2>${p.zh && p.en ? `<div class="zh">${esc(p.zh)}</div>` : ""}
+        ${p.addr ? `<div class="addr"><svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true"><path d="M6 15s5-5.2 5-9A5 5 0 0 0 1 6c0 3.8 5 9 5 9z" fill="${css("--fire")}"/><circle cx="6" cy="6" r="2" fill="#fff"/></svg><span>${esc(p.addr)}${p.district ? " · " + esc(p.district) : ""}</span></div>` : ""}
+        ${p.items.length ? `<ul>${p.items.map(t => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+        ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+        ${posts.length ? `<div class="posts">${posts.map(x => `<div class="post"><p>${x.message ? `“${esc(x.message)}”` : `<i>(photo only)</i>`}<span>${x.ig ? ` — <a href="${igLink(x.ig)}" target="_blank" rel="noopener">@${esc(x.ig)}</a>` : x.credit ? ` — ${esc(x.credit)}` : ""}${x.status === "pending" ? ` <em>待審批 pending</em>` : ""}</span></p>${postActs(x)}</div>`).join("")}</div>` : ""}
+        <div class="links">${p.source ? `<a href="${esc(p.source)}" target="_blank" rel="noopener">Source 來源 ↗</a>` : ""}<a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}" target="_blank" rel="noopener">Directions 路線 ↗</a></div>
+        ${apiOn ? `<button type="button" class="btn addhere" data-act="contribute">＋ 加相片／留言 Add your photo</button>` : ""}
+        ${admin ? `<div class="admin-row">
+          ${p.status === "pending" ? `<button type="button" class="btn approve" data-act="approve" data-id="${p.id}">批准 Approve</button>` : ""}
+          <button type="button" class="btn primary" data-act="edit">編輯 Edit</button>
+          <button type="button" class="btn danger" data-act="delete" data-id="${p.id}">刪除 Delete</button></div>
+          ${near.length ? `<div class="near"><b>附近 Within 150 m</b>${near.map(o => `<div><span>${esc(nameOf(o))} · ${Math.round(distM(o, p))} m</span><button type="button" class="btn ghost" data-act="merge" data-id="${o.id}">合併到這裡 Merge here</button></div>`).join("")}</div>` : ""}` : ""}
+      </div>`;
+    clearInterval(cycleTimer);
+    if (ph.length > 1) {
+      let i = 0;
+      cycleTimer = setInterval(() => {
+        const imgs = card.querySelectorAll(".photo img"), dots = card.querySelectorAll(".dots i");
+        i = (i + 1) % imgs.length;
+        imgs.forEach((im, j) => im.classList.toggle("on", j === i));
+        dots.forEach((d, j) => d.classList.toggle("on", j === i));
+        card.querySelector(".cap").innerHTML = caption(ph[i]);
+      }, 2600);
+    }
+  }
+  document.querySelectorAll(".fire").forEach(f => f.classList.toggle("on", f === p.el));
+  document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === p.chip));
+  place(p);
+  card.classList.add("show");
+}
+function place(p) {
+  const pt = map.project([p.lon, p.lat]), w = card.offsetWidth, h = card.offsetHeight || 420, m = 16;
+  let x = pt.x - w / 2, y = pt.y - h - 40;
+  if (y < m) y = pt.y + 30;
+  x = Math.max(m, Math.min(innerWidth - w - m, x));
+  y = Math.max(m, Math.min(innerHeight - h - m, y));
+  card.style.left = x + "px"; card.style.top = y + "px";
+}
+function closeCard() {
+  clearTimeout(hideTimer); clearInterval(cycleTimer);
+  card.classList.remove("show"); document.querySelectorAll(".fire,.chip").forEach(e => e.classList.remove("on"));
+  current = null; pinned = false;
+}
+function hideSoon() {
+  if (pinned) return;
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(closeCard, 220);
+}
+card.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+card.addEventListener("mouseleave", hideSoon);
+map.on("move", () => { if (current) place(current); });
+map.on("click", e => {
+  if (placing) { setDraft([e.lngLat.lng, e.lngLat.lat]); return; }
+  closeCard();
+});
+
+document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+  filter = b.dataset.f;
+  document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  applyFilter(); closeCard();
+}));
+
+function toast(text) {
+  toastEl.textContent = text; toastEl.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove("show"), 3800);
+}
+
+// ── Saving: the site's Netlify function (the admin password is checked there, never in this page) ──
+async function api(body) {
+  const r = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({ ok: false, error: "The server didn't answer properly. Try again in a moment." }));
+  if (!d.ok) throw new Error(d.error || "Something went wrong.");
+  return d;
+}
+async function loadRows() {
+  if (!API_URL) return;
+  try {
+    if (admin) sheetRows = (await api({ action: "list", password: adminPw })).rows || [];
+    else sheetRows = (await (await fetch(API_URL + "?action=list", { cache: "no-store" })).json()).rows || [];
+  } catch (e) {
+    if (admin && /password/i.test(e.message)) { logout(); toast("Please log in again. 請重新登入"); return; }
+    toast("Couldn't load the added seesaws right now.");
+  }
+  draw();
+}
+
+// ── Finding an address: Hong Kong government address search first, then OpenStreetMap ──
+async function geocode(q) {
+  const out = [];
+  try {
+    const r = await fetch(`https://www.als.gov.hk/lookup?q=${encodeURIComponent(q)}&n=5`, { headers: { Accept: "application/json" } });
+    const d = await r.json();
+    for (const s of d.SuggestedAddress || []) {
+      const pa = s.Address?.PremisesAddress || {};
+      const g = [].concat(pa.GeospatialInformation || [])[0] || {};
+      const lat = +g.Latitude, lon = +g.Longitude;
+      if (!inHK(lat, lon)) continue;
+      const e = pa.EngPremisesAddress || {}, c = pa.ChiPremisesAddress || {};
+      const en = [e.BuildingName, [e.EngStreet?.BuildingNoFrom, e.EngStreet?.StreetName].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      const zh = [c.ChiStreet?.StreetName, c.ChiStreet?.BuildingNoFrom && c.ChiStreet.BuildingNoFrom + "號", c.BuildingName].filter(Boolean).join("");
+      out.push({ label: [en, zh].filter(Boolean).join(" · ") || q, lat, lon });
+    }
+  } catch {}
+  if (out.length) return out;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hk&limit=5&accept-language=zh-HK,en&q=${encodeURIComponent(q)}`);
+    for (const x of await r.json()) { const lat = +x.lat, lon = +x.lon; if (inHK(lat, lon)) out.push({ label: x.display_name, lat, lon }); }
+  } catch {}
+  return out;
+}
+async function shrink(file) {
+  const img = await createImageBitmap(file);
+  const s = Math.min(1, 1200 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", .82).split(",")[1];
+}
+
+// ── The add / edit / admin login panel ──
+function setDraft(lngLat) {
+  if (!draft) {
+    const w = document.createElement("div");
+    w.className = "fire-wrap draft duo";
+    w.innerHTML = `<div class="fire">${FLAME}</div>`;
+    draft = new maplibregl.Marker({ element: w, anchor: "bottom", draggable: true }).setLngLat(lngLat).addTo(map);
+    draft.on("dragend", pinState);
+  } else draft.setLngLat(lngLat);
+  pinState();
+}
+function pinState() {
+  const el = panel.querySelector("#pinstate");
+  if (el) {
+    if (!draft) { el.textContent = "未有位置 No location yet: search, use your location, or tap the map."; el.className = "pinstate"; }
+    else {
+      const { lat, lng } = draft.getLngLat();
+      el.textContent = `位置已設定 Location set (${lat.toFixed(5)}, ${lng.toFixed(5)}). Drag the flame to adjust.`;
+      el.className = "pinstate ok";
+    }
+  }
+  if (draft && onPin) onPin();
+}
+function closePanel() {
+  panel.hidden = true; panel.innerHTML = "";
+  placing = false; onPin = null;
+  draft?.remove(); draft = null;
+}
+function openLogin() {
+  closePanel(); closeCard();
+  panel.hidden = false;
+  panel.innerHTML = `<h3>管理員登入 Admin</h3><p class="hint">Log in to edit, merge, delete or approve entries.</p>
+    <form id="loginform"><label>密碼 Password<input type="password" id="pw" autocomplete="current-password" required></label>
+    <div class="btnrow"><button class="btn primary">登入 Log in</button><button type="button" class="btn ghost" data-close>取消 Cancel</button></div>
+    <p class="msg" id="msg" role="status"></p></form>`;
+  panel.querySelector("#pw").focus();
+  panel.querySelector("#loginform").addEventListener("submit", async e => {
+    e.preventDefault();
+    const pw = panel.querySelector("#pw").value, msg = panel.querySelector("#msg"), btn = e.target.querySelector(".primary");
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Checking…";
+    try {
+      await api({ action: "login", password: pw });
+      admin = true; adminPw = pw;
+      try { sessionStorage.setItem("seesaw-admin", pw); } catch {}
+      document.getElementById("adminbar").hidden = false;
+      closePanel(); toast("已登入 Logged in as admin"); loadRows();
+    } catch (err) { msg.className = "msg err"; msg.textContent = err.message; btn.disabled = false; }
+  });
+}
+function logout() {
+  admin = false; adminPw = "";
+  try { sessionStorage.removeItem("seesaw-admin"); } catch {}
+  document.getElementById("adminbar").hidden = true;
+  closePanel(); loadRows();
+}
+
+// p = entry to edit (admin); target = seesaw to add a photo/message to.
+function openEntry(p, target) {
+  closePanel(); closeCard();
+  const isEdit = !!p, own = p?.posts?.find(x => x.id === p.id) || {};
+  const showPostFields = !isEdit || p.fan;
+  let join = target || null;
+  panel.hidden = false;
+  panel.innerHTML = `<h3>${isEdit ? "編輯 Edit entry" : target ? "加相片／留言 Add your photo" : "新增搖搖板 Add a seesaw"}</h3>
+    <p class="hint">${isEdit ? "Change any field, search a new address or drag the flame to move it." : target ? "Your photo and message will show on this seesaw's card." : "Find the spot by address, your phone's location or tapping the map, then drag the flame to the exact place."}</p>
+    <form id="entryform" novalidate>
+      ${target ? `<div class="pinstate ok">加到 Adding to: <b>${esc(nameOf(target))}</b></div>` : `
+      <label>地址或地點 Address or place
+        <span class="search"><input id="f-addr" maxlength="200" placeholder="e.g. 石硤尾公園 or 1 Cherry Street" value="${esc(p?.addr || "")}"><button type="button" class="btn ghost" id="find">搜尋 Find</button></span></label>
+      <button type="button" class="btn ghost here" id="f-here">用我的位置 Use my location</button>
+      <div class="results" id="results"></div>
+      <div class="pinstate" id="pinstate"></div>
+      <div id="join"></div>
+      <label id="namewrap">名稱 Place name<input id="f-en" maxlength="120" placeholder="e.g. Shek Kip Mei Park" value="${esc(p?.en || "")}"></label>`}
+      ${isEdit ? `<label>中文名稱 Chinese name<input id="f-zh" maxlength="80" value="${esc(p.zh)}"></label>
+      <label>地區 District<input id="f-district" maxlength="60" value="${esc(p.district)}"></label>
+      <label>備註 Note<input id="f-note" maxlength="300" value="${esc(p.note || "")}"></label>` : ""}
+      <label>相片 Photo of the seesaw${isEdit ? " (adds a new photo)" : " (optional)"}<input type="file" id="f-photo" accept="image/*"></label>
+      ${showPostFields ? `
+      <label>Instagram 帳號 (optional)<span class="at"><span aria-hidden="true">@</span><input id="f-ig" maxlength="31" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="yourname" value="${esc(own.ig || "")}"></span></label>
+      <label>留言 Leave a message<textarea id="f-msg" rows="3" maxlength="200" placeholder="e.g. 聽完首歌，下次想同你嚟呢度 · After hearing the song, next time I want to come here with you">${esc(own.message || "")}</textarea></label>` : ""}
+      <input class="hp" id="f-web" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="btnrow"><button class="btn primary" id="save">${isEdit ? "儲存 Save" : target ? "送出 Post" : "加入地圖 Add to map"}</button><button type="button" class="btn ghost" data-close>取消 Cancel</button></div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>`;
+  const $ = s => panel.querySelector(s);
+  if (!target) {
+    placing = true;
+    if (p) setDraft([p.lon, p.lat]); else pinState();
+    // Offer to join a seesaw that's already on the map within 60 m, instead of making a duplicate.
+    onPin = () => {
+      if (isEdit) return;
+      const { lat, lng } = draft.getLngLat();
+      const near = entries.filter(o => o.status !== "pending").map(o => ({ o, d: distM(o, { lat, lon: lng }) })).filter(x => x.d < 60).sort((a, b) => a.d - b.d)[0];
+      const box = $("#join");
+      if (!near) { box.innerHTML = ""; join = null; $("#namewrap").hidden = false; return; }
+      box.innerHTML = `<label class="opt joinopt"><input type="checkbox" id="f-join" checked><span>加到附近嘅「${esc(nameOf(near.o))}」<br>Add to this seesaw already on the map (${Math.round(near.d)} m away)</span></label>`;
+      join = near.o; $("#namewrap").hidden = true;
+      $("#f-join").addEventListener("change", e => { join = e.target.checked ? near.o : null; $("#namewrap").hidden = !!join; });
+    };
+    const find = async () => {
+      const q = $("#f-addr").value.trim(), box = $("#results");
+      if (!q) { box.innerHTML = `<p>Type an address or place name first.</p>`; return; }
+      box.innerHTML = `<p>Searching…</p>`;
+      const found = await geocode(q);
+      if (!found.length) { box.innerHTML = `<p>No match. Try other wording, use your location, or tap the map.</p>`; return; }
+      box.innerHTML = "";
+      found.forEach(f => {
+        const b = document.createElement("button");
+        b.type = "button"; b.textContent = f.label;
+        b.addEventListener("click", () => {
+          setDraft([f.lon, f.lat]);
+          if ($("#f-addr").value.trim() === q) $("#f-addr").value = f.label;
+          map.flyTo({ center: [f.lon, f.lat], zoom: 17, duration: 1200 });
+          box.innerHTML = "";
+        });
+        box.appendChild(b);
+      });
+    };
+    $("#find").addEventListener("click", find);
+    $("#f-addr").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); find(); } });
+    $("#f-here").addEventListener("click", () => {
+      const box = $("#results");
+      if (!navigator.geolocation) { box.innerHTML = `<p>This browser can't share its location. Search the address instead.</p>`; return; }
+      box.innerHTML = `<p>Finding your location…</p>`;
+      navigator.geolocation.getCurrentPosition(pos => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        if (!inHK(lat, lon)) { box.innerHTML = `<p>You don't seem to be in Hong Kong right now. Search the address or tap the map instead.</p>`; return; }
+        box.innerHTML = "";
+        setDraft([lon, lat]);
+        map.flyTo({ center: [lon, lat], zoom: 17, duration: 1200 });
+      }, () => { box.innerHTML = `<p>Location is turned off for this site. Allow it in your browser settings, or search the address instead.</p>`; },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    });
+  }
+  $("#entryform").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#msg"), btn = $("#save");
+    const err = t => { msg.className = "msg err"; msg.textContent = t; };
+    const file = $("#f-photo").files[0];
+    const message = $("#f-msg")?.value.trim() || "", ig = igHandle($("#f-ig")?.value), credit = $("#f-credit")?.value.trim() || "";
+    const en = $("#f-en")?.value.trim() || "", addr = $("#f-addr")?.value.trim() || "";
+    let lat, lon;
+    if (join) { lat = join.lat; lon = join.lon; if (!file && !message) return err("Add a photo or a message."); }
+    else {
+      if (!draft) return err("Set the location first: search the address, use your location, or tap the map.");
+      ({ lat, lng: lon } = draft.getLngLat());
+      if (!inHK(lat, lon)) return err("That spot isn't in Hong Kong. Drag the flame onto the right place.");
+      if (!en && !addr) return err("Add a place name or an address.");
+    }
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
+    try {
+      const photo = file ? await shrink(file) : "";
+      if (isEdit) {
+        await api({ action: "save", password: adminPw, photo, row: { id: p.id, en, addr, lat, lon, message, ig, credit,
+          zh: $("#f-zh").value.trim(), district: $("#f-district").value.trim(), note: $("#f-note").value.trim() } });
+        closePanel(); toast("已儲存 Saved"); loadRows();
+        return;
+      }
+      const d = await api({ action: "add", spot: join?.id || "", en: join ? "" : en, addr: join ? "" : addr, lat, lon, message, ig, credit, photo, website: $("#f-web").value });
+      let image = null;
+      if (photo) { image = new Image(); image.src = "data:image/jpeg;base64," + photo; await image.decode().catch(() => { image = null; }); }
+      const nm = join ? { en: join.en, zh: join.zh } : hasCJK(en) ? { en: "", zh: en } : { en, zh: "" };
+      const main = nm.zh || nm.en || addr, sub = nm.zh && nm.en ? nm.en : "";
+      openShare({ pending: d.status === "pending", image, main, sub, message, ig });
+      await loadRows();
+      const shown = entries.find(x => x.id === d.id || x.posts.some(y => y.id === d.id));
+      if (shown) map.flyTo({ center: [shown.lon, shown.lat], zoom: 16, duration: 1200 });
+    } catch (x) { err(x.message); btn.disabled = false; }
+  });
+}
+
+// ── Instagram story image (1080 × 1920), made in the browser after someone posts ──
+const IG_TAGS = "@yiminghay @yiminghay_fansclub";
+const P = d => new Path2D(d);
+const FLAME_OUT = "M21 49c-9.5 0-16-6.4-16-15.2 0-6.6 3.8-11 7.4-15.4 2.6-3.2 4.7-7.4 4-14.4 6.2 3 10.8 9.4 10.8 16.6 1.8-1.4 2.8-3.6 3-6 4.4 4.2 6.8 10 6.8 15.6C37 43 30.6 49 21 49z";
+const FLAME_IN = "M21 47c-4.6 0-8-3.2-8-7.6 0-4 2.6-6.6 4.6-9 1.4-1.8 2.2-4 2-6.8 4.6 2.6 9.4 7.6 9.4 14 0 5.2-3.4 9.4-8 9.4z";
+const hasCJK = s => /[㐀-鿿]/.test(s || "");
+function wrapLines(g, text, maxW, maxLines) {
+  const out = []; let line = "";
+  const units = hasCJK(text) ? [...text] : text.split(/(\s+)/);
+  for (const u of units) {
+    if (g.measureText(line + u).width > maxW && line.trim()) { out.push(line.trim()); line = u.trimStart(); }
+    else line += u;
+  }
+  if (line.trim()) out.push(line.trim());
+  if (out.length > maxLines) {
+    out.length = maxLines;
+    let last = out[maxLines - 1];
+    while (last.length && g.measureText(last + "…”").width > maxW) last = last.slice(0, -1);
+    out[maxLines - 1] = last + "…";
+  }
+  return out;
+}
+function drawSampleScene(g, x, y, s) { // the stand-in picture when there's no photo
+  g.save(); g.translate(x, y); g.scale(s / 680, s / 680);
+  const sky = g.createLinearGradient(0, 0, 0, 680);
+  sky.addColorStop(0, "#ffb37a"); sky.addColorStop(.55, "#f58fa8"); sky.addColorStop(1, "#9b7fe0");
+  g.fillStyle = sky; g.fillRect(0, 0, 680, 680);
+  g.globalAlpha = .9; g.fillStyle = "#fff3c4"; g.beginPath(); g.arc(510, 250, 70, 0, 7); g.fill();
+  g.globalAlpha = .55; g.fillStyle = "#7a5fc2"; g.fillRect(40, 250, 70, 230); g.fillRect(120, 300, 60, 180); g.fillRect(560, 290, 80, 190);
+  g.globalAlpha = 1;
+  const gr = g.createLinearGradient(0, 470, 0, 680); gr.addColorStop(0, "#5fb98a"); gr.addColorStop(1, "#2f7f63");
+  g.fillStyle = gr; g.fillRect(0, 470, 680, 210);
+  g.globalAlpha = .5; g.fillStyle = "#25664f"; g.beginPath(); g.ellipse(340, 560, 260, 26, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+  g.save(); g.translate(340, 470); g.rotate(-12 * Math.PI / 180); g.translate(-340, -470);
+  g.fillStyle = "#ffcf3d"; g.strokeStyle = "#2a1766"; g.lineWidth = 6;
+  g.beginPath(); g.roundRect(110, 458, 460, 22, 11); g.fill(); g.stroke();
+  g.fillStyle = "#2a1766"; g.beginPath(); g.roundRect(130, 430, 16, 34, 6); g.roundRect(534, 430, 16, 34, 6); g.fill();
+  g.restore();
+  g.fillStyle = "#ff4d1c"; g.lineJoin = "round"; const t = P("M340 482 L300 560 H380 Z"); g.fill(t); g.stroke(t);
+  g.restore();
+}
+async function makeStory(o) {
+  const serif = '"Noto Serif TC", "PingFang HK", serif', sans = '"Figtree", "PingFang HK", sans-serif';
+  const msg = o.message ? `“${o.message}”` : "";
+  await Promise.all([
+    document.fonts.load(`900 92px ${serif}`, "〈在搖搖板上相對的我們〉"),
+    document.fonts.load(`700 54px ${serif}`, msg + o.main + "搵你附近嘅搖搖板Find a seesaw near you〈〉"),
+    document.fonts.load(`700 30px ${sans}`, "炎明熹 GIGI YIM · 新歌@" + o.ig + location.host + o.sub)
+  ]).catch(() => {});
+  const W = 1080, H = 1920, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  // background: deep purple with faint map roads
+  const bg = g.createRadialGradient(540, 864, 0, 540, 864, 1500);
+  bg.addColorStop(0, "#6a45c9"); bg.addColorStop(1, "#2a1766");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(154,124,242,.22)"; g.lineWidth = 5; g.lineCap = "round";
+  ["M-40 420 C 200 380 260 520 470 470 S 820 300 1120 380", "M-40 1180 C 180 1120 330 1260 560 1200 S 900 1060 1120 1120",
+   "M140 -20 C 180 300 60 600 160 900 S 120 1500 220 1940", "M900 -20 C 860 260 1000 560 920 860 S 980 1500 860 1940",
+   "M-40 1640 C 300 1600 700 1700 1120 1620"].forEach(d => g.stroke(P(d)));
+  g.fillStyle = "rgba(230,227,240,.07)"; g.fill(P("M0 1260 C 220 1210 380 1320 620 1280 S 960 1180 1080 1230 V1920 H0Z"));
+  // song title
+  g.fillStyle = "#ffb000"; g.font = `700 30px ${sans}`;
+  if ("letterSpacing" in g) g.letterSpacing = "4px";
+  g.fillText("炎明熹 GIGI YIM · 新歌", 96, 282);
+  if ("letterSpacing" in g) g.letterSpacing = "0px";
+  const titleLine = (y, parts) => { let x = 96; for (const [t, col, w] of parts) { g.font = `${w} 92px ${serif}`; g.fillStyle = col; g.fillText(t, x, y); x += g.measureText(t).width; } };
+  titleLine(392, [["〈", "#c7b4ff", 700], ["在搖搖板上", "#fff", 900]]);
+  titleLine(497, [["相對的我們", "#fff", 900], ["〉", "#c7b4ff", 700]]);
+  // polaroid with the photo and place name
+  const PW = 700, PH = 818;
+  g.save(); g.translate(540, 545 + PH / 2); g.rotate(-3.5 * Math.PI / 180);
+  g.shadowColor = "rgba(12,4,40,.45)"; g.shadowBlur = 80; g.shadowOffsetY = 40;
+  g.fillStyle = "#fff"; g.beginPath(); g.roundRect(-PW / 2, -PH / 2, PW, PH, 14); g.fill();
+  g.shadowColor = "transparent";
+  const px = -PW / 2 + 30, py = -PH / 2 + 30;
+  g.save(); g.beginPath(); g.roundRect(px, py, 640, 640, 6); g.clip();
+  if (o.image) {
+    const iw = o.image.naturalWidth || o.image.width, ih = o.image.naturalHeight || o.image.height, s = Math.max(640 / iw, 640 / ih);
+    g.drawImage(o.image, px + (640 - iw * s) / 2, py + (640 - ih * s) / 2, iw * s, ih * s);
+  } else drawSampleScene(g, px, py, 640);
+  g.restore();
+  g.save(); g.translate(px, py + 664); g.scale(34 / 12, 46 / 16);
+  g.fillStyle = "#ff4d1c"; g.fill(P("M6 15s5-5.2 5-9A5 5 0 0 0 1 6c0 3.8 5 9 5 9z"));
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(6, 6, 2, 0, 7); g.fill(); g.restore();
+  const tx = px + 48, nameW = 640 - 48;
+  g.fillStyle = "#24164d"; g.font = `700 40px ${hasCJK(o.main) ? serif : sans}`;
+  g.fillText(wrapLines(g, o.main, nameW, 1)[0] || "", tx, py + 700);
+  if (o.sub) { g.fillStyle = "#6c5fa0"; g.font = `600 26px ${sans}`; g.fillText(wrapLines(g, o.sub, nameW, 1)[0], tx, py + 740); }
+  g.restore();
+  // flame sticker
+  g.save(); g.translate(885, 585); g.rotate(10 * Math.PI / 180); g.scale(170 / 42, 210 / 52); g.translate(-21, -26);
+  g.shadowColor = "rgba(255,120,40,.75)"; g.shadowBlur = 30;
+  const fo = g.createLinearGradient(0, 52, 0, 0); fo.addColorStop(0, "#ff3d1c"); fo.addColorStop(.6, "#ff7a1a"); fo.addColorStop(1, "#ffb000");
+  g.fillStyle = fo; g.fill(P(FLAME_OUT)); g.shadowColor = "transparent";
+  const fi = g.createLinearGradient(0, 52, 0, 0); fi.addColorStop(0, "#ffd23f"); fi.addColorStop(1, "#fff6c2");
+  g.fillStyle = fi; g.fill(P(FLAME_IN)); g.restore();
+  // small seesaw
+  g.save(); g.translate(96, 1395);
+  g.save(); g.translate(150, 22); g.rotate(-5 * Math.PI / 180); g.translate(-150, -22);
+  g.fillStyle = "#ffb000"; g.beginPath(); g.roundRect(6, 14, 288, 10, 5); g.fill();
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(22, 6, 6, 0, 7); g.arc(278, 6, 6, 0, 7); g.fill(); g.restore();
+  g.fillStyle = "#ff4d1c"; g.fill(P("M150 26 L138 40 H162Z")); g.restore();
+  // message and @name
+  let y = 1445;
+  if (msg) {
+    let size = 54; g.font = `700 ${size}px ${serif}`;
+    let lines = wrapLines(g, msg, 888, 2);
+    if (g.measureText(msg).width > 888 * 2) { size = 44; g.font = `700 ${size}px ${serif}`; lines = wrapLines(g, msg, 888, 3); }
+    g.fillStyle = "#fff";
+    lines.forEach((l, i) => g.fillText(l + (i === lines.length - 1 && l.endsWith("…") ? "”" : ""), 96, y + size * 1.08 + i * size * 1.4));
+    y += size * 1.08 + (lines.length - 1) * size * 1.4;
+  }
+  if (o.ig) { g.fillStyle = "#ffb000"; g.font = `700 32px ${sans}`; y += msg ? 58 : 40; g.fillText("@" + o.ig, 96, y); }
+  // call to action
+  const cy = Math.max(1600, y + 44);
+  g.fillStyle = "rgba(255,255,255,.92)"; g.font = `700 30px ${serif}`;
+  g.fillText("搵你附近嘅搖搖板", 96, cy + 30); g.fillText("Find a seesaw near you", 96, cy + 69);
+  g.font = `700 28px ${sans}`;
+  const host = location.host || "seesaw-map.netlify.app", hw = g.measureText(host).width;
+  g.fillStyle = "#fff"; g.beginPath(); g.roundRect(984 - hw - 48, cy + 10, hw + 48, 62, 31); g.fill();
+  g.fillStyle = "#4f2f9e"; g.fillText(host, 984 - hw - 24, cy + 51);
+  return new Promise(res => c.toBlob(res, "image/png"));
+}
+async function openShare(o) {
+  closePanel();
+  panel.hidden = false;
+  const mobile = matchMedia("(pointer: coarse)").matches;
+  panel.innerHTML = `<h3>${o.pending ? "多謝！Thanks!" : "已加入地圖 Added!"}</h3>
+    <p class="hint">${o.pending ? "Your post will show on the map after a quick check. You can share it now:" : "Now share it on your Instagram Story:"}</p>
+    <div class="storyprev"><img id="st-img" alt="Your Instagram story picture"><span id="st-wait">製作中 Making your story…</span></div>
+    <button type="button" class="btn igbtn" id="st-share" disabled>${mobile ? "分享到 IG Story · Share to Instagram" : "下載限動圖片 Download the story picture"}</button>
+    <ol class="igsteps">
+      ${mobile ? `<li>In the share menu, pick <b>Instagram</b> → <b>Story</b>.</li>` : `<li>Send the picture to your phone and post it as a Story.</li>`}
+      <li>Add the <b>Music</b> sticker, search <b>在搖搖板上相對的我們</b>.</li>
+      <li>Tag <b>@yiminghay</b> and <b>@yiminghay_fansclub</b> <button type="button" class="linkish" id="st-copy">複製 Copy tags</button></li>
+    </ol>
+    <div class="btnrow"><button type="button" class="btn ghost" data-close>完成 Done</button></div>
+    <p class="msg" id="st-msg" role="status"></p>`;
+  const $ = s => panel.querySelector(s), note = $("#st-msg");
+  $("#st-copy").addEventListener("click", () => {
+    navigator.clipboard.writeText(IG_TAGS).then(() => { note.textContent = "已複製 Tags copied: " + IG_TAGS; })
+      .catch(() => { note.textContent = "Tags: " + IG_TAGS; });
+  });
+  let blob;
+  try { blob = await makeStory(o); } catch { note.className = "msg err"; note.textContent = "Couldn't make the story picture on this browser."; return; }
+  if (panel.hidden || !$("#st-img")) return;
+  const url = URL.createObjectURL(blob);
+  $("#st-img").src = url; $("#st-wait").remove(); $("#st-share").disabled = false;
+  const download = () => { const a = document.createElement("a"); a.href = url; a.download = "seesaw-story.png"; document.body.appendChild(a); a.click(); a.remove(); };
+  $("#st-share").addEventListener("click", async () => {
+    const file = new File([blob], "seesaw-story.png", { type: "image/png" });
+    if (mobile && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; }
+      catch (e) { if (e.name === "AbortError") return; }
+    }
+    download();
+    note.className = "msg"; note.textContent = mobile ? "Saved to your photos/downloads. Open Instagram, start a Story and pick it." : "Downloaded. Post it from your phone as a Story.";
+  });
+}
+
+panel.addEventListener("click", e => { if (e.target.closest("[data-close]")) closePanel(); });
+addEventListener("keydown", e => { if (e.key === "Escape" && !panel.hidden) closePanel(); });
+
+// Buttons inside the photo card
+card.addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || !current) return;
+  const p = current, act = b.dataset.act, id = b.dataset.id || p.id;
+  if (act === "contribute") return openEntry(null, p);
+  if (act === "edit") return openEntry(p);
+  if (act === "delete") {
+    b.outerHTML = `<button type="button" class="btn danger" data-act="confirm-delete" data-id="${esc(id)}">確定刪除 Yes, delete</button><button type="button" class="btn ghost" data-act="cancel">取消 Cancel</button>`;
+    return;
+  }
+  if (act === "cancel") { current = null; return showCard(p); }
+  b.disabled = true;
+  try {
+    if (act === "confirm-delete") { await api({ action: "delete", password: adminPw, id }); toast("已刪除 Deleted"); }
+    if (act === "approve") { await api({ action: "approve", password: adminPw, id }); toast("已批准 Approved"); }
+    if (act === "merge") { await api({ action: "merge", password: adminPw, id, into: p.id }); toast("已合併 Merged"); }
+    if (act === "split") { await api({ action: "merge", password: adminPw, id, into: "" }); toast("已分開 Split off"); }
+    await loadRows();
+    const again = entries.find(x => x.id === p.id);
+    if (again && act !== "confirm-delete") { pinned = true; showCard(again); }
+  } catch (x) { toast(x.message); b.disabled = false; }
+});
+
+document.getElementById("addbtn").addEventListener("click", () => openEntry(null));
+document.getElementById("adminlink").addEventListener("click", openLogin);
+document.getElementById("logout").addEventListener("click", logout);
+
+draw();
+(async () => {
+  // Turn on adding and admin only when the saving function answers (it doesn't on a file or a Netlify Drop site).
+  if (!API_URL || location.protocol === "file:") return;
+  try {
+    const d = await (await fetch(API_URL + "?action=list", { cache: "no-store" })).json();
+    if (!d.ok) return;
+    sheetRows = d.rows || [];
+  } catch { return; }
+  apiOn = true;
+  document.getElementById("addbtn").hidden = false;
+  document.getElementById("adminlink").hidden = false;
+  document.getElementById("fanfilter").hidden = false;
+  try { adminPw = sessionStorage.getItem("seesaw-admin") || ""; } catch {}
+  if (adminPw) { admin = true; document.getElementById("adminbar").hidden = false; }
+  loadRows();
+})();
+
+// ── Music video: tries to start with sound. Most browsers refuse sound before the visitor has clicked anything;
+//    then it plays silently and the sound comes on, from the top, at the visitor's first click or key press.
+//    The button switches the sound off and on; the video (and so the lyrics) keeps playing either way. ──
+const screen = document.getElementById("screen");
+document.getElementById("yt").href = `https://www.youtube.com/watch?v=${YOUTUBE_ID}`;
+const isFile = location.protocol === "file:";
+screen.innerHTML = isFile
+  ? `<img src="https://i.ytimg.com/vi/${YOUTUBE_ID}/hqdefault.jpg" alt="〈在搖搖板上相對的我們〉 music video">
+     <a class="play" href="https://www.youtube.com/watch?v=${YOUTUBE_ID}" target="_blank" rel="noopener" aria-label="Watch the MV on YouTube"><span><svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path d="M3 2l17 10L3 22z" fill="#fff"/></svg></span></a>
+     <div class="offline-note">The MV plays here once this page is online</div>`
+  : `<div id="ytplayer"></div><button class="unmute" id="unmute" type="button" hidden></button>`;
+let player = null, soundOn = false, heardOnce = false, userMuted = false;
+const soundBtn = document.getElementById("unmute");
+function showSound() {
+  if (!soundBtn) return;
+  soundBtn.hidden = false;
+  soundBtn.textContent = soundOn ? "靜音 Sound off" : "開聲 Sound on";
+  soundBtn.classList.toggle("off", soundOn);
+  soundBtn.setAttribute("aria-pressed", String(!soundOn));
+}
+function soundUp(fromTop) {
+  if (!player?.unMute) return;
+  if (fromTop && !heardOnce) player.seekTo(0, true);
+  player.unMute(); player.setVolume(80); player.playVideo();
+  soundOn = true; heardOnce = true; showSound();
+}
+function soundDown() {
+  if (!player?.mute) return;
+  player.mute(); soundOn = false; showSound();
+}
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player("ytplayer", {
+    videoId: YOUTUBE_ID,
+    playerVars: { autoplay: 1, playsinline: 1, rel: 0, loop: 1, playlist: YOUTUBE_ID },
+    events: {
+      onReady: e => {
+        e.target.unMute(); e.target.setVolume(80); e.target.playVideo();
+        // If the browser blocked sound, the video doesn't start: play it silently instead.
+        setTimeout(() => {
+          const playing = e.target.getPlayerState() === YT.PlayerState.PLAYING && !e.target.isMuted();
+          if (playing) { soundOn = true; heardOnce = true; }
+          else { e.target.mute(); e.target.playVideo(); soundOn = false; }
+          showSound();
+        }, 1200);
+      }
+    }
+  });
+};
+if (!isFile) {
+  const ytApi = document.createElement("script");
+  ytApi.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(ytApi);
+}
+soundBtn?.addEventListener("click", e => {
+  e.stopPropagation();
+  if (soundOn) { userMuted = true; soundDown(); } else { userMuted = false; soundUp(true); }
+});
+// First click or key press anywhere turns the sound on (unless the visitor chose Sound off).
+const firstTouch = e => {
+  if (soundOn || userMuted || heardOnce || e.target === soundBtn) return;
+  soundUp(true);
+};
+addEventListener("pointerdown", firstTouch);
+addEventListener("keydown", firstTouch);
+
+// ── Lyric cursor ──
+// Lines in lyrics.txt can start with a time like [01:23.45]; each line then shows when the MV reaches that moment.
+// Lines without times rotate every few seconds. Add #timing to the end of the site address to record the times.
+const lyric = document.getElementById("lyric");
+const TAG = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
+let plain = [], timed = [], curText = "", idx = 0, tx = 0, ty = 0, x = 0, y = 0, tilt = 0, lastX = 0, active = false;
+function parseLyrics(text) {
+  plain = []; timed = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const tags = [...raw.matchAll(TAG)];
+    const line = raw.replace(TAG, "").trim();
+    if (!line) continue;
+    plain.push(line);
+    tags.forEach(m => timed.push({ t: +m[1] * 60 + +m[2], line }));
+  }
+  timed.sort((a, b) => a.t - b.t);
+  idx = 0;
+  setLine(timed.length ? "" : plain[0] || "");
+}
+function setLine(text) {
+  if (text === curText) return;
+  curText = text;
+  lyric.classList.add("fade");
+  setTimeout(() => { lyric.textContent = curText; lyric.classList.toggle("fade", !(active && curText)); }, timed.length ? 80 : 250);
+}
+parseLyrics(LYRICS.join("\n"));
+const lyricsReady = plain.length ? Promise.resolve() :
+  fetch("lyrics.txt", { cache: "no-store" }).then(r => r.ok ? r.text() : "").then(parseLyrics).catch(() => {});
+
+// Untimed: next line every 3.2 s. Timed: follow the MV's playback position.
+setInterval(() => {
+  if (timed.length || !plain.length || !active) return;
+  idx = (idx + 1) % plain.length;
+  setLine(plain[idx]);
+}, 3200);
+setInterval(() => {
+  if (!timed.length || !player?.getCurrentTime) return;
+  const t = player.getCurrentTime() + 0.25;
+  let i = -1;
+  for (let k = 0; k < timed.length && timed[k].t <= t; k++) i = k;
+  setLine(i >= 0 ? timed[i].line : "");
+}, 150);
+
+addEventListener("pointermove", e => {
+  if (e.pointerType !== "mouse") return;
+  lyric.style.visibility = e.target.closest?.(".editor, .card") ? "hidden" : "";
+  tx = e.clientX + 18; ty = e.clientY + 20;
+  tilt = Math.max(-9, Math.min(9, (e.clientX - lastX) * .6));
+  lastX = e.clientX;
+  if (!active) { active = true; x = tx; y = ty; lyric.classList.toggle("fade", !curText); }
+});
+document.addEventListener("mouseleave", () => { active = false; lyric.classList.add("fade"); });
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+(function tick() {
+  x += (tx - x) * .18; y += (ty - y) * .18; tilt *= .9;
+  lyric.style.transform = `translate(${x}px, ${y}px) rotate(${still ? 0 : tilt}deg)`;
+  requestAnimationFrame(tick);
+})();
+
+// ── Lyric timing tool (open the site with #timing at the end of the address) ──
+const fmtTime = t => `${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(2).padStart(5, "0")}`;
+function openTiming() {
+  closePanel(); closeCard();
+  panel.hidden = false;
+  if (!plain.length) {
+    panel.innerHTML = `<h3>歌詞對時 Lyric timing</h3><p class="hint">Put the lyrics into lyrics.txt first, one line per row, then open this page again.</p>
+      <div class="btnrow"><button type="button" class="btn ghost" data-close>關閉 Close</button></div>`;
+    return;
+  }
+  const lines = plain.slice();
+  let marks = [];
+  panel.innerHTML = `<h3>歌詞對時 Lyric timing</h3>
+    <p class="hint">Press Start and the MV plays from the beginning with sound. Each time a line starts being sung, press the Space bar (or the orange button). Late on one? Press Undo and catch the next.</p>
+    <div class="timing-now"><small id="tm-count"></small><b id="tm-next"></b></div>
+    <div class="btnrow"><button type="button" class="btn primary" id="tm-start">開始 Start</button>
+      <button type="button" class="btn tm-mark" id="tm-mark" disabled>下一句 Next line (Space)</button>
+      <button type="button" class="btn ghost" id="tm-undo" disabled>Undo</button></div>
+    <label id="tm-outwrap" hidden>完成 Done. Copy this and paste it over everything in lyrics.txt<textarea id="tm-out" rows="8" readonly></textarea></label>
+    <div class="btnrow"><button type="button" class="btn primary" id="tm-copy" hidden>複製 Copy</button><button type="button" class="btn ghost" data-close>關閉 Close</button></div>
+    <p class="msg" id="tm-msg" role="status"></p>`;
+  const $ = s => panel.querySelector(s), msg = $("#tm-msg");
+  const update = () => {
+    $("#tm-count").textContent = marks.length < lines.length ? `Line ${marks.length + 1} of ${lines.length}: press at the start of` : `All ${lines.length} lines timed`;
+    $("#tm-next").textContent = lines[marks.length] || "";
+    $("#tm-undo").disabled = !marks.length;
+  };
+  const finish = () => {
+    const out = lines.map((l, i) => `[${fmtTime(marks[i])}]${l}`).join("\n");
+    $("#tm-out").value = out;
+    $("#tm-outwrap").hidden = false; $("#tm-copy").hidden = false; $("#tm-mark").disabled = true;
+    parseLyrics(out);
+    msg.className = "msg"; msg.textContent = "The cursor now follows these times on this page, so you can check them while the MV plays.";
+  };
+  $("#tm-start").addEventListener("click", () => {
+    if (!player?.seekTo) { msg.className = "msg err"; msg.textContent = "The MV isn't ready yet. Wait a few seconds and press Start again."; return; }
+    marks = [];
+    player.seekTo(0, true); player.unMute(); player.setVolume(80); player.playVideo();
+    soundOn = true; heardOnce = true; userMuted = false; showSound();
+    $("#tm-mark").disabled = false; $("#tm-outwrap").hidden = true; $("#tm-copy").hidden = true;
+    msg.textContent = ""; $("#tm-start").textContent = "重來 Restart";
+    update();
+  });
+  const mark = () => {
+    if ($("#tm-mark").disabled) return;
+    marks.push(player.getCurrentTime());
+    update();
+    if (marks.length === lines.length) finish();
+  };
+  $("#tm-mark").addEventListener("click", mark);
+  $("#tm-undo").addEventListener("click", () => { marks.pop(); $("#tm-mark").disabled = false; $("#tm-outwrap").hidden = true; $("#tm-copy").hidden = true; update(); });
+  $("#tm-copy").addEventListener("click", () => {
+    const ta = $("#tm-out");
+    navigator.clipboard.writeText(ta.value).then(() => { msg.className = "msg"; msg.textContent = "Copied 已複製"; })
+      .catch(() => { ta.select(); msg.className = "msg"; msg.textContent = "Press Cmd+C (or Ctrl+C) to copy."; });
+  });
+  update();
+}
+addEventListener("keydown", e => {
+  if (e.code !== "Space" || panel.hidden || e.target.matches("input, textarea")) return;
+  const b = panel.querySelector("#tm-mark");
+  if (!b) return;
+  e.preventDefault();
+  b.click();
+});
+if (location.hash === "#timing") lyricsReady.then(openTiming);
+</script>
+</body>
+</html>
